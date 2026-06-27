@@ -1,3 +1,4 @@
+```yaml
 name: CloudOps CI
 
 on:
@@ -12,15 +13,19 @@ permissions:
 
 jobs:
   test-build-smoke:
-    name: Test, build and smoke test
+    name: Test, build, smoke test and publish
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -71,23 +76,33 @@ jobs:
         if: always()
         run: docker rm -f cloudops-ci || true
 
-  aws-auth:
-    name: Authenticate to AWS using OIDC
-    needs: test-build-smoke
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
       - name: Configure temporary AWS credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/github-actions-cicd-practice'
         uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: cloudops-${{ github.run_id }}
           aws-region: ap-southeast-2
 
-      - name: Verify AWS identity
-        run: aws sts get-caller-identity
+      - name: Log in to Amazon ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/github-actions-cicd-practice'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push tested image to ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/github-actions-cicd-practice'
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: cloudops-mini-platform
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker tag \
+            cloudops-mini-platform:${IMAGE_TAG} \
+            ${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
+
+          docker tag \
+            cloudops-mini-platform:${IMAGE_TAG} \
+            ${REGISTRY}/${REPOSITORY}:latest
+
+          docker push ${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
+          docker push ${REGISTRY}/${REPOSITORY}:latest
