@@ -1,5 +1,3 @@
-```yaml
-name: CloudOps CI
 
 on:
   push:
