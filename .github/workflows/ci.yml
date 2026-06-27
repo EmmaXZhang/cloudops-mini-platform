@@ -70,3 +70,24 @@ jobs:
       - name: Remove test container
         if: always()
         run: docker rm -f cloudops-ci || true
+
+  aws-auth:
+    name: Authenticate to AWS using OIDC
+    needs: test-build-smoke
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: cloudops-${{ github.run_id }}
+          aws-region: ap-southeast-2
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
